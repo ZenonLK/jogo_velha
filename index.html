@@ -3,194 +3,443 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Jogo da Velha P2P</title>
-  <style>
-    * { box-sizing: border-box;}
-    body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      background-color: #121212;
-      color: #333;
-    }
-    h1 { margin-bottom: 10px; font-size: 1.8rem; text-align: center; }
-    #status { font-weight: bold; margin-bottom: 15px; color: #555; text-align: center; padding: 0 10px; }
-    
-    .setup-container {
-      background: white;
-      padding: 15px 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      margin-bottom: 20px;
-      text-align: center;
-      max-width: 90%;
-    }
-    input {
-      padding: 8px;
-      margin-right: 5px;
-      margin-bottom: 8px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      width: 200px;
-    }
-    button {
-      padding: 8px 12px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover { background: #0056b3; }
-
-    .board {
-      display: grid;
-      grid-template-columns: repeat(3, 90px);
-      grid-template-rows: repeat(3, 90px);
-      gap: 5px;
-      background: #333;
-      padding: 5px;
-      border-radius: 8px;
-    }
-    .cell {
-      background: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.5rem;
-      font-weight: bold;
-      cursor: pointer;
-      user-select: none;
-    }
-    .cell.taken { cursor: not-allowed; color: #007bff; }
-  </style>
+  <title>Jogo da Velha Online P2P</title>
+  
+  <!-- Tailwind CSS para estilização moderna e responsiva -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons para ícones visualmente agradáveis -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PeerJS para conexão P2P sem servidor backend próprio -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .cell-symbol {
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .grid-cell:hover:not(.taken) {
+      background-color: #f3f4f6;
+    }
+  </style>
 </head>
-<body>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4">
 
-  <h1>Jogo da Velha Online</h1>
-  <div id="status">Conectando ao servidor...</div>
-
-  <div class="setup-container">
-    <p style="font-size: 0.9rem; margin-top: 0;">Seu ID: <b id="my-id" style="word-break: break-all;">...</b></p>
-    <input type="text" id="peer-id-input" placeholder="Cole o ID do outro">
-    <button id="connect-btn">Conectar</button>
+  <!-- NOTIFICAÇÃO TOAST -->
+  <div id="toast" class="fixed top-5 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-4 py-2.5 rounded-full shadow-lg text-sm font-semibold flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none z-50">
+    <i data-lucide="info" class="w-4 h-4"></i>
+    <span id="toast-text">Mensagem...</span>
   </div>
 
-  <div class="board" id="board">
-    <div class="cell" data-index="0"></div>
-    <div class="cell" data-index="1"></div>
-    <div class="cell" data-index="2"></div>
-    <div class="cell" data-index="3"></div>
-    <div class="cell" data-index="4"></div>
-    <div class="cell" data-index="5"></div>
-    <div class="cell" data-index="6"></div>
-    <div class="cell" data-index="7"></div>
-    <div class="cell" data-index="8"></div>
+  <!-- CONTAINER PRINCIPAL -->
+  <div class="w-full max-w-md bg-slate-800 border border-slate-700/60 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+    
+    <!-- HEADER -->
+    <header class="text-center mb-6">
+      <div class="inline-flex items-center justify-center w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl mb-3 border border-indigo-500/20">
+        <i data-lucide="gamepad-2" class="w-6 h-6"></i>
+      </div>
+      <h1 class="text-2xl font-extrabold tracking-tight text-white">Jogo da Velha Online</h1>
+      <p class="text-xs text-slate-400 mt-1">Conexão direta P2P em tempo real</p>
+    </header>
+
+    <!-- TELA 1: LOBBY INICIAL -->
+    <div id="screen-lobby" class="space-y-4">
+      <div class="bg-slate-900/60 p-4 rounded-2xl border border-slate-700/40 text-center">
+        <p class="text-xs font-medium text-slate-400 mb-1">Como você quer jogar?</p>
+        <div class="grid grid-cols-2 gap-3 mt-3">
+          <button id="btn-create-room" class="flex flex-col items-center justify-center p-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all transform active:scale-95 shadow-lg shadow-indigo-600/20">
+            <i data-lucide="plus-circle" class="w-6 h-6 mb-1"></i>
+            <span class="text-sm">Criar Sala</span>
+          </button>
+
+          <button id="btn-show-join" class="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-650 text-slate-200 rounded-xl font-bold transition-all transform active:scale-95 border border-slate-600">
+            <i data-lucide="log-in" class="w-6 h-6 mb-1"></i>
+            <span class="text-sm">Entrar em Sala</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- FORMULÁRIO DE ENTRADA MANUAL POR CÓDIGO (ESCONDIDO INICIALMENTE) -->
+      <div id="join-form" class="hidden bg-slate-900/90 p-4 rounded-2xl border border-indigo-500/30 space-y-3">
+        <label class="block text-xs font-semibold text-slate-300">Digite o código de 4 dígitos:</label>
+        <div class="flex gap-2">
+          <input type="text" id="input-room-code" maxlength="4" placeholder="Ex: 4821" class="w-full uppercase text-center tracking-widest font-mono text-xl font-bold bg-slate-800 border border-slate-600 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500">
+          <button id="btn-join-room" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 rounded-xl transition-all flex items-center justify-center">
+            <i data-lucide="arrow-right" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TELA 2: AGUARDANDO OPONENTE (SALA CRIADA) -->
+    <div id="screen-waiting" class="hidden text-center space-y-5 py-4">
+      <div class="inline-block relative">
+        <div class="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+        <div class="absolute inset-0 flex items-center justify-center text-indigo-400 font-mono font-bold text-lg" id="waiting-code-display">----</div>
+      </div>
+      <div>
+        <h3 class="text-lg font-bold text-white">Aguardando oponente...</h3>
+        <p class="text-xs text-slate-400 mt-1">Passe o código abaixo ou envie o link direto</p>
+      </div>
+
+      <!-- CÓDIGO E LINK DA SALA -->
+      <div class="bg-slate-900/80 p-4 rounded-2xl border border-slate-700/60 space-y-3">
+        <div>
+          <span class="text-[10px] uppercase font-extrabold text-slate-500 tracking-wider">Código da Sala</span>
+          <div id="room-code-badge" class="text-3xl font-mono font-black text-indigo-400 tracking-widest my-1">----</div>
+        </div>
+
+        <div class="flex gap-2">
+          <button id="btn-copy-code" class="flex-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copiar Código
+          </button>
+          <button id="btn-copy-link" class="flex-1 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
+            <i data-lucide="link" class="w-3.5 h-3.5"></i> Copiar Link
+          </button>
+        </div>
+      </div>
+
+      <button id="btn-cancel-waiting" class="text-xs text-slate-400 hover:text-rose-400 transition-colors">Cancelar e voltar</button>
+    </div>
+
+    <!-- TELA 3: TABULEIRO DO JOGO -->
+    <div id="screen-game" class="hidden space-y-5">
+      
+      <!-- PLACAR E STATUS -->
+      <div class="grid grid-cols-3 gap-2 bg-slate-900/80 p-3 rounded-2xl border border-slate-700/50 text-center items-center">
+        <!-- PLAYER X -->
+        <div id="player-x-card" class="p-2 rounded-xl transition-all border border-transparent">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Jogador X</span>
+          <span id="score-x" class="text-xl font-black text-indigo-400">0</span>
+          <span id="badge-you-x" class="hidden text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-bold block mt-1">VOCÊ</span>
+        </div>
+
+        <!-- STATUS CENTRAL -->
+        <div class="text-center">
+          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Turno</span>
+          <div id="turn-indicator" class="text-xs font-bold text-amber-400 mt-1">Aguardando...</div>
+        </div>
+
+        <!-- PLAYER O -->
+        <div id="player-o-card" class="p-2 rounded-xl transition-all border border-transparent">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Jogador O</span>
+          <span id="score-o" class="text-xl font-black text-rose-400">0</span>
+          <span id="badge-you-o" class="hidden text-[9px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold block mt-1">VOCÊ</span>
+        </div>
+      </div>
+
+      <!-- TABULEIRO 3x3 -->
+      <div class="grid grid-cols-3 gap-3 bg-slate-900 p-3 rounded-2xl border border-slate-700/60 shadow-inner">
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="0"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="1"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="2"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="3"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="4"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="5"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="6"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="7"></button>
+        <button class="grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all" data-index="8"></button>
+      </div>
+
+      <!-- BOTÃO DE REMATCH -->
+      <div class="flex gap-3">
+        <button id="btn-rematch" class="hidden flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Jogar Novamente
+        </button>
+        <button id="btn-leave" class="bg-slate-800 hover:bg-rose-950/40 hover:text-rose-400 text-slate-400 border border-slate-700 px-4 py-3 rounded-xl font-bold transition-all text-xs">
+          Sair
+        </button>
+      </div>
+    </div>
+
   </div>
 
   <script>
-    const statusEl = document.getElementById('status');
-    const myIdEl = document.getElementById('my-id');
-    const peerInput = document.getElementById('peer-id-input');
-    const connectBtn = document.getElementById('connect-btn');
-    const cells = document.querySelectorAll('.cell');
-
+    // PREFIXO PARA GARANTIR NOMES ÚNICOS SEM CONFLITO NO SERVIDOR DO PEERJS
+    const PEER_PREFIX = 'jv-p2p-v2-';
+    
+    // ESTADOS DO JOGO
     let peer = null;
     let conn = null;
     let mySymbol = '';
-    let turn = 'X';
+    let currentTurn = 'X';
     let gameState = ['', '', '', '', '', '', '', '', ''];
     let gameActive = false;
+    let currentRoomCode = '';
+    let scores = { X: 0, O: 0 };
 
-    const winningConditions = [
+    const WINNING_COMBOS = [
       [0, 1, 2], [3, 4, 5], [6, 7, 8],
       [0, 3, 6], [1, 4, 7], [2, 5, 8],
       [0, 4, 8], [2, 4, 6]
     ];
 
-    peer = new Peer();
+    // ELEMENTOS DOM
+    const screenLobby = document.getElementById('screen-lobby');
+    const screenWaiting = document.getElementById('screen-waiting');
+    const screenGame = document.getElementById('screen-game');
+    const joinForm = document.getElementById('join-form');
+    const inputRoomCode = document.getElementById('input-room-code');
+    const roomCodeBadge = document.getElementById('room-code-badge');
+    const waitingCodeDisplay = document.getElementById('waiting-code-display');
+    const turnIndicator = document.getElementById('turn-indicator');
+    const btnRematch = document.getElementById('btn-rematch');
+    const cells = document.querySelectorAll('.grid-cell');
+    
+    const playerXCard = document.getElementById('player-x-card');
+    const playerOCard = document.getElementById('player-o-card');
+    const badgeYouX = document.getElementById('badge-you-x');
+    const badgeYouO = document.getElementById('badge-you-o');
 
-    peer.on('open', (id) => {
-      myIdEl.innerText = id;
-      statusEl.innerText = 'Pronto! Copie o ID e cole no outro aparelho.';
+    // INICIALIZAR ÍCONES
+    lucide.createIcons();
+
+    // GERAR CÓDIGO DE 4 DÍGITOS
+    function generateRoomCode() {
+      return Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
+    // UTILITÁRIO DE TOAST
+    function showToast(text) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-text').innerText = text;
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 3000);
+    }
+
+    // NAVEGAÇÃO DE TELA
+    function showScreen(screen) {
+      screenLobby.classList.add('hidden');
+      screenWaiting.classList.add('hidden');
+      screenGame.classList.add('hidden');
+      screen.classList.remove('hidden');
+    }
+
+    // AUTO-ENTRAR SE TIVER PARÂMETRO NA URL (?sala=1234)
+    window.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('sala');
+      if (roomParam && roomParam.length === 4) {
+        joinRoom(roomParam);
+      }
     });
 
-    // Quem recebe a chamada é o Jogador 'O' (Host da conexão receptora)
-    peer.on('connection', (c) => {
-      conn = c;
+    // BOTÃO: EXIBIR CAMPO DE DIGITAR CÓDIGO
+    document.getElementById('btn-show-join').addEventListener('click', () => {
+      joinForm.classList.toggle('hidden');
+      if (!joinForm.classList.contains('hidden')) {
+        inputRoomCode.focus();
+      }
+    });
+
+    // BOTÃO: CRIAR SALA (HOST = 'X')
+    document.getElementById('btn-create-room').addEventListener('click', () => {
+      currentRoomCode = generateRoomCode();
+      const fullPeerId = PEER_PREFIX + currentRoomCode;
+
+      roomCodeBadge.innerText = currentRoomCode;
+      waitingCodeDisplay.innerText = currentRoomCode;
+      showScreen(screenWaiting);
+
+      peer = new Peer(fullPeerId);
+
+      peer.on('open', () => {
+        mySymbol = 'X';
+      });
+
+      // QUANDO ALGUÉM SE CONECTAR À SALA CRIADA
+      peer.on('connection', (c) => {
+        conn = c;
+        setupConnection();
+        startGame();
+      });
+
+      peer.on('error', (err) => {
+        showToast('Erro ao criar sala. Tente novamente.');
+        showScreen(screenLobby);
+      });
+    });
+
+    // BOTÃO: ENTRAR EM SALA (GUEST = 'O')
+    document.getElementById('btn-join-room').addEventListener('click', () => {
+      const code = inputRoomCode.value.trim();
+      if (code.length !== 4) {
+        showToast('Digite um código de 4 números');
+        return;
+      }
+      joinRoom(code);
+    });
+
+    function joinRoom(code) {
+      currentRoomCode = code;
+      const fullPeerId = PEER_PREFIX + code;
       mySymbol = 'O';
-      gameActive = true;
-      setupConnection();
-      statusEl.innerText = 'Conectado! Vez do Jogador X (Oponente).';
-    });
 
-    // Quem clica em conectar é o Jogador 'X'
-    connectBtn.addEventListener('click', () => {
-      const destId = peerInput.value.trim();
-      if (!destId) return;
-      conn = peer.connect(destId);
-      mySymbol = 'X';
-      gameActive = true;
-      setupConnection();
-      statusEl.innerText = 'Conectado! Sua vez (X).';
-    });
+      peer = new Peer();
 
+      peer.on('open', () => {
+        conn = peer.connect(fullPeerId);
+        setupConnection();
+      });
+
+      peer.on('error', () => {
+        showToast('Sala não encontrada ou cheia!');
+        showScreen(screenLobby);
+      });
+    }
+
+    // CONFIGURAR OS EVENTOS DA CONEXÃO P2P
     function setupConnection() {
+      conn.on('open', () => {
+        startGame();
+      });
+
       conn.on('data', (data) => {
         if (data.type === 'MOVE') {
-          applyMove(data.index, data.symbol);
+          handleMove(data.index, data.symbol);
+        } else if (data.type === 'REMATCH') {
+          resetBoardState();
+          showToast('Partida reiniciada!');
         }
       });
 
       conn.on('close', () => {
-        statusEl.innerText = 'O outro jogador desconectou.';
-        gameActive = false;
+        showToast('O oponente desconectou.');
+        setTimeout(() => location.reload(), 2000);
       });
     }
 
+    // INICIAR TELA DE JOGO
+    function startGame() {
+      showScreen(screenGame);
+      
+      // DESTACAR QUEM É VOCÊ
+      if (mySymbol === 'X') {
+        badgeYouX.classList.remove('hidden');
+        playerXCard.classList.add('border-indigo-500/50', 'bg-indigo-500/10');
+      } else {
+        badgeYouO.classList.remove('hidden');
+        playerOCard.classList.add('border-rose-500/50', 'bg-rose-500/10');
+      }
+
+      resetBoardState();
+    }
+
+    // EVENTOS DE CLIQUE NO TABULEIRO
     cells.forEach(cell => {
       cell.addEventListener('click', () => {
         const index = cell.getAttribute('data-index');
         
-        // Valida se o jogo está ativo, se a casa está vazia e se é realmente o turno deste jogador
-        if (!gameActive || gameState[index] !== '' || turn !== mySymbol) return;
+        if (!gameActive || gameState[index] !== '' || currentTurn !== mySymbol) return;
 
-        applyMove(index, mySymbol);
+        handleMove(index, mySymbol);
         conn.send({ type: 'MOVE', index: index, symbol: mySymbol });
       });
     });
 
-    function applyMove(index, symbol) {
+    // PROCESSAR JOGADA
+    function handleMove(index, symbol) {
       gameState[index] = symbol;
-      cells[index].innerText = symbol;
-      cells[index].classList.add('taken');
+      const cell = cells[index];
+      
+      cell.innerText = symbol;
+      cell.classList.add('taken');
+      cell.classList.add(symbol === 'X' ? 'text-indigo-400' : 'text-rose-400');
 
       if (checkWin(symbol)) {
-        statusEl.innerText = (symbol === mySymbol) ? 'Você venceu! 🎉' : 'Fim de jogo! Oponente venceu.';
         gameActive = false;
+        scores[symbol]++;
+        updateScoreDisplay();
+        
+        if (symbol === mySymbol) {
+          turnIndicator.innerText = 'Você venceu! 🎉';
+          turnIndicator.className = 'text-xs font-bold text-emerald-400 mt-1';
+        } else {
+          turnIndicator.innerText = 'Oponente venceu! ❌';
+          turnIndicator.className = 'text-xs font-bold text-rose-400 mt-1';
+        }
+
+        btnRematch.classList.remove('hidden');
         return;
       }
 
-      if (gameState.every(cell => cell !== '')) {
-        statusEl.innerText = 'Empate! 🤝';
+      if (gameState.every(c => c !== '')) {
         gameActive = false;
+        turnIndicator.innerText = 'Empate! 🤝';
+        turnIndicator.className = 'text-xs font-bold text-slate-400 mt-1';
+        btnRematch.classList.remove('hidden');
         return;
       }
 
-      turn = (symbol === 'X') ? 'O' : 'X';
-      statusEl.innerText = (turn === mySymbol) ? `Sua vez (${mySymbol})` : `Vez do oponente (${turn})`;
+      // ALTERNAR TURNO
+      currentTurn = (symbol === 'X') ? 'O' : 'X';
+      updateTurnDisplay();
+    }
+
+    function updateTurnDisplay() {
+      if (currentTurn === mySymbol) {
+        turnIndicator.innerText = 'Sua vez!';
+        turnIndicator.className = 'text-xs font-bold text-emerald-400 mt-1 animate-pulse';
+      } else {
+        turnIndicator.innerText = `Vez do (${currentTurn})`;
+        turnIndicator.className = 'text-xs font-bold text-slate-400 mt-1';
+      }
     }
 
     function checkWin(symbol) {
-      return winningConditions.some(condition => {
-        return condition.every(index => gameState[index] === symbol);
+      return WINNING_COMBOS.some(combo => {
+        return combo.every(idx => gameState[idx] === symbol);
       });
     }
+
+    function updateScoreDisplay() {
+      document.getElementById('score-x').innerText = scores.X;
+      document.getElementById('score-o').innerText = scores.O;
+    }
+
+    function resetBoardState() {
+      gameState = ['', '', '', '', '', '', '', '', ''];
+      gameActive = true;
+      currentTurn = 'X';
+      
+      cells.forEach(cell => {
+        cell.innerText = '';
+        cell.className = 'grid-cell aspect-square bg-slate-800 rounded-xl flex items-center justify-center text-4xl font-extrabold transition-all';
+      });
+
+      btnRematch.classList.add('hidden');
+      updateTurnDisplay();
+    }
+
+    // BOTÃO REINICIAR (REMATCH)
+    btnRematch.addEventListener('click', () => {
+      resetBoardState();
+      conn.send({ type: 'REMATCH' });
+    });
+
+    // COPIAR CÓDIGO DA SALA
+    document.getElementById('btn-copy-code').addEventListener('click', () => {
+      document.execCommand('copy');
+      navigator.clipboard.writeText(currentRoomCode);
+      showToast('Código copiado!');
+    });
+
+    // COPIAR LINK DIRETO COM PARÂMETRO DA SALA
+    document.getElementById('btn-copy-link').addEventListener('click', () => {
+      const directUrl = `${window.location.origin}${window.location.pathname}?sala=${currentRoomCode}`;
+      document.execCommand('copy');
+      navigator.clipboard.writeText(directUrl);
+      showToast('Link de convite copiado!');
+    });
+
+    // CANCELAR ESPERA / SAIR
+    document.getElementById('btn-cancel-waiting').addEventListener('click', () => location.reload());
+    document.getElementById('btn-leave').addEventListener('click', () => location.reload());
   </script>
 </body>
 </html>
