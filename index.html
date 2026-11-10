@@ -17,22 +17,25 @@
       background-color: #f0f2f5;
       color: #333;
     }
-    h1 { margin-bottom: 10px; }
-    #status { font-weight: bold; margin-bottom: 15px; color: #555; }
+    h1 { margin-bottom: 10px; font-size: 1.8rem; text-align: center; }
+    #status { font-weight: bold; margin-bottom: 15px; color: #555; text-align: center; padding: 0 10px; }
     
     .setup-container {
       background: white;
-      padding: 20px;
+      padding: 15px 20px;
       border-radius: 8px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       margin-bottom: 20px;
       text-align: center;
+      max-width: 90%;
     }
     input {
       padding: 8px;
       margin-right: 5px;
+      margin-bottom: 8px;
       border: 1px solid #ccc;
       border-radius: 4px;
+      width: 200px;
     }
     button {
       padding: 8px 12px;
@@ -63,19 +66,18 @@
       cursor: pointer;
       user-select: none;
     }
-    .cell.taken { cursor: not-allowed; }
+    .cell.taken { cursor: not-allowed; color: #007bff; }
   </style>
-  <!-- Biblioteca PeerJS para conexão P2P -->
   <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
-  <h1>Jogo da Velha Online (P2P)</h1>
-  <div id="status">Conectando ao servidor PeerJS...</div>
+  <h1>Jogo da Velha Online</h1>
+  <div id="status">Conectando ao servidor...</div>
 
   <div class="setup-container">
-    <p>Seu ID: <b id="my-id">...</b></p>
-    <input type="text" id="peer-id-input" placeholder="Cole o ID do outro jogador">
+    <p style="font-size: 0.9rem; margin-top: 0;">Seu ID: <b id="my-id" style="word-break: break-all;">...</b></p>
+    <input type="text" id="peer-id-input" placeholder="Cole o ID do outro">
     <button id="connect-btn">Conectar</button>
   </div>
 
@@ -101,7 +103,7 @@
     let peer = null;
     let conn = null;
     let mySymbol = '';
-    let turn = '';
+    let turn = 'X';
     let gameState = ['', '', '', '', '', '', '', '', ''];
     let gameActive = false;
 
@@ -111,47 +113,42 @@
       [0, 4, 8], [2, 4, 6]
     ];
 
-    // Inicializa PeerJS
     peer = new Peer();
 
     peer.on('open', (id) => {
       myIdEl.innerText = id;
-      statusEl.innerText = 'Aguardando conexão ou insira o ID de alguém.';
+      statusEl.innerText = 'Pronto! Copie o ID e cole no outro aparelho.';
     });
 
-    // Quando outro jogador se conecta a este dispositivo (Host = 'X')
+    // Quem recebe a chamada é o Jogador 'O' (Host da conexão receptora)
     peer.on('connection', (c) => {
       conn = c;
-      mySymbol = 'X';
-      turn = 'X';
+      mySymbol = 'O';
       gameActive = true;
       setupConnection();
-      statusEl.innerText = 'Jogador 2 conectado! Sua vez (X).';
+      statusEl.innerText = 'Conectado! Vez do Jogador X (Oponente).';
     });
 
-    // Conectar ao outro jogador (Guest = 'O')
+    // Quem clica em conectar é o Jogador 'X'
     connectBtn.addEventListener('click', () => {
       const destId = peerInput.value.trim();
       if (!destId) return;
       conn = peer.connect(destId);
-      mySymbol = 'O';
-      turn = 'X';
+      mySymbol = 'X';
       gameActive = true;
       setupConnection();
-      statusEl.innerText = 'Conectado! Aguarde a jogada do Jogador 1 (X).';
+      statusEl.innerText = 'Conectado! Sua vez (X).';
     });
 
     function setupConnection() {
       conn.on('data', (data) => {
         if (data.type === 'MOVE') {
-          makeMove(data.index, data.symbol, false);
-        } else if (data.type === 'RESET') {
-          resetBoard();
+          applyMove(data.index, data.symbol);
         }
       });
 
       conn.on('close', () => {
-        statusEl.innerText = 'O outro jogador se desconectou.';
+        statusEl.innerText = 'O outro jogador desconectou.';
         gameActive = false;
       });
     }
@@ -159,23 +156,22 @@
     cells.forEach(cell => {
       cell.addEventListener('click', () => {
         const index = cell.getAttribute('data-index');
+        
+        // Valida se o jogo está ativo, se a casa está vazia e se é realmente o turno deste jogador
         if (!gameActive || gameState[index] !== '' || turn !== mySymbol) return;
 
-        makeMove(index, mySymbol, true);
+        applyMove(index, mySymbol);
+        conn.send({ type: 'MOVE', index: index, symbol: mySymbol });
       });
     });
 
-    function makeMove(index, symbol, isLocal) {
+    function applyMove(index, symbol) {
       gameState[index] = symbol;
       cells[index].innerText = symbol;
       cells[index].classList.add('taken');
 
-      if (isLocal && conn) {
-        conn.send({ type: 'MOVE', index: index, symbol: symbol });
-      }
-
       if (checkWin(symbol)) {
-        statusEl.innerText = isLocal ? 'Você venceu! 🎉' : 'Você perdeu! ❌';
+        statusEl.innerText = (symbol === mySymbol) ? 'Você venceu! 🎉' : 'Fim de jogo! Oponente venceu.';
         gameActive = false;
         return;
       }
@@ -186,27 +182,14 @@
         return;
       }
 
-      turn = symbol === 'X' ? 'O' : 'X';
-      if (gameActive) {
-        statusEl.innerText = turn === mySymbol ? `Sua vez (${mySymbol})` : `Vez do oponente (${turn})`;
-      }
+      turn = (symbol === 'X') ? 'O' : 'X';
+      statusEl.innerText = (turn === mySymbol) ? `Sua vez (${mySymbol})` : `Vez do oponente (${turn})`;
     }
 
     function checkWin(symbol) {
       return winningConditions.some(condition => {
         return condition.every(index => gameState[index] === symbol);
       });
-    }
-
-    function resetBoard() {
-      gameState = ['', '', '', '', '', '', '', '', ''];
-      gameActive = true;
-      turn = 'X';
-      cells.forEach(cell => {
-        cell.innerText = '';
-        cell.classList.remove('taken');
-      });
-      statusEl.innerText = turn === mySymbol ? `Novo jogo! Sua vez (${mySymbol})` : `Novo jogo! Vez do oponente (${turn})`;
     }
   </script>
 </body>
