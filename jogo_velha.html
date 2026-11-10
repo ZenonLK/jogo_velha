@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo da Velha P2P</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: #f0f2f5;
+      color: #333;
+    }
+    h1 { margin-bottom: 10px; }
+    #status { font-weight: bold; margin-bottom: 15px; color: #555; }
+    
+    .setup-container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    input {
+      padding: 8px;
+      margin-right: 5px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      padding: 8px 12px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #0056b3; }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 90px);
+      grid-template-rows: repeat(3, 90px);
+      gap: 5px;
+      background: #333;
+      padding: 5px;
+      border-radius: 8px;
+    }
+    .cell {
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+      font-weight: bold;
+      cursor: pointer;
+      user-select: none;
+    }
+    .cell.taken { cursor: not-allowed; }
+  </style>
+  <!-- Biblioteca PeerJS para conexão P2P -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+  <h1>Jogo da Velha Online (P2P)</h1>
+  <div id="status">Conectando ao servidor PeerJS...</div>
+
+  <div class="setup-container">
+    <p>Seu ID: <b id="my-id">...</b></p>
+    <input type="text" id="peer-id-input" placeholder="Cole o ID do outro jogador">
+    <button id="connect-btn">Conectar</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="cell" data-index="0"></div>
+    <div class="cell" data-index="1"></div>
+    <div class="cell" data-index="2"></div>
+    <div class="cell" data-index="3"></div>
+    <div class="cell" data-index="4"></div>
+    <div class="cell" data-index="5"></div>
+    <div class="cell" data-index="6"></div>
+    <div class="cell" data-index="7"></div>
+    <div class="cell" data-index="8"></div>
+  </div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const myIdEl = document.getElementById('my-id');
+    const peerInput = document.getElementById('peer-id-input');
+    const connectBtn = document.getElementById('connect-btn');
+    const cells = document.querySelectorAll('.cell');
+
+    let peer = null;
+    let conn = null;
+    let mySymbol = '';
+    let turn = '';
+    let gameState = ['', '', '', '', '', '', '', '', ''];
+    let gameActive = false;
+
+    const winningConditions = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8],
+      [0, 3, 6], [1, 4, 7], [2, 5, 8],
+      [0, 4, 8], [2, 4, 6]
+    ];
+
+    // Inicializa PeerJS
+    peer = new Peer();
+
+    peer.on('open', (id) => {
+      myIdEl.innerText = id;
+      statusEl.innerText = 'Aguardando conexão ou insira o ID de alguém.';
+    });
+
+    // Quando outro jogador se conecta a este dispositivo (Host = 'X')
+    peer.on('connection', (c) => {
+      conn = c;
+      mySymbol = 'X';
+      turn = 'X';
+      gameActive = true;
+      setupConnection();
+      statusEl.innerText = 'Jogador 2 conectado! Sua vez (X).';
+    });
+
+    // Conectar ao outro jogador (Guest = 'O')
+    connectBtn.addEventListener('click', () => {
+      const destId = peerInput.value.trim();
+      if (!destId) return;
+      conn = peer.connect(destId);
+      mySymbol = 'O';
+      turn = 'X';
+      gameActive = true;
+      setupConnection();
+      statusEl.innerText = 'Conectado! Aguarde a jogada do Jogador 1 (X).';
+    });
+
+    function setupConnection() {
+      conn.on('data', (data) => {
+        if (data.type === 'MOVE') {
+          makeMove(data.index, data.symbol, false);
+        } else if (data.type === 'RESET') {
+          resetBoard();
+        }
+      });
+
+      conn.on('close', () => {
+        statusEl.innerText = 'O outro jogador se desconectou.';
+        gameActive = false;
+      });
+    }
+
+    cells.forEach(cell => {
+      cell.addEventListener('click', () => {
+        const index = cell.getAttribute('data-index');
+        if (!gameActive || gameState[index] !== '' || turn !== mySymbol) return;
+
+        makeMove(index, mySymbol, true);
+      });
+    });
+
+    function makeMove(index, symbol, isLocal) {
+      gameState[index] = symbol;
+      cells[index].innerText = symbol;
+      cells[index].classList.add('taken');
+
+      if (isLocal && conn) {
+        conn.send({ type: 'MOVE', index: index, symbol: symbol });
+      }
+
+      if (checkWin(symbol)) {
+        statusEl.innerText = isLocal ? 'Você venceu! 🎉' : 'Você perdeu! ❌';
+        gameActive = false;
+        return;
+      }
+
+      if (gameState.every(cell => cell !== '')) {
+        statusEl.innerText = 'Empate! 🤝';
+        gameActive = false;
+        return;
+      }
+
+      turn = symbol === 'X' ? 'O' : 'X';
+      if (gameActive) {
+        statusEl.innerText = turn === mySymbol ? `Sua vez (${mySymbol})` : `Vez do oponente (${turn})`;
+      }
+    }
+
+    function checkWin(symbol) {
+      return winningConditions.some(condition => {
+        return condition.every(index => gameState[index] === symbol);
+      });
+    }
+
+    function resetBoard() {
+      gameState = ['', '', '', '', '', '', '', '', ''];
+      gameActive = true;
+      turn = 'X';
+      cells.forEach(cell => {
+        cell.innerText = '';
+        cell.classList.remove('taken');
+      });
+      statusEl.innerText = turn === mySymbol ? `Novo jogo! Sua vez (${mySymbol})` : `Novo jogo! Vez do oponente (${turn})`;
+    }
+  </script>
+</body>
+</html>
